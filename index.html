@@ -1,0 +1,1639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="ChromaTap" />
+  <meta name="theme-color" content="#4f46e5" />
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%234f46e5'/%3E%3Cstop offset='100%25' stop-color='%23f43f5e'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='180' height='180' rx='40' fill='url(%23g)'/%3E%3Ccircle cx='65' cy='70' r='16' fill='%23fbbf24'/%3E%3Ccircle cx='115' cy='65' r='16' fill='%2310b981'/%3E%3Ccircle cx='120' cy='115' r='16' fill='%2338bdf8'/%3E%3Ccircle cx='68' cy='118' r='16' fill='%23ffffff'/%3E%3C/svg%3E" />
+  <title>ChromaTap — Color by Number</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+      overscroll-behavior: none;
+    }
+    #canvas-viewport {
+      touch-action: none;
+      position: relative;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 45%, #ffffff 0%, #f1f5f9 100%);
+    }
+    #zoom-stage {
+      transform-origin: 0 0;
+      will-change: transform;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    .region-path {
+      cursor: pointer;
+      transition: fill 0.22s ease, stroke 0.18s ease, opacity 0.18s ease;
+    }
+    .region-path.highlighted {
+      fill: #e2e8f0 !important;
+      animation: pulseRegion 1.5s ease-in-out infinite;
+    }
+    @keyframes pulseRegion {
+      0%, 100% { fill: #e2e8f0; }
+      50% { fill: #cbd5e1; }
+    }
+    .region-label {
+      pointer-events: none;
+      font-family: 'Inter', sans-serif;
+      font-weight: 700;
+      fill: #334155;
+      text-anchor: middle;
+      dominant-baseline: central;
+      transition: opacity 0.2s ease;
+    }
+    .region-label.filled {
+      opacity: 0;
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-4px); }
+      75% { transform: translateX(4px); }
+    }
+    .shake {
+      animation: shake 0.24s ease-in-out;
+    }
+    .palette-scroll::-webkit-scrollbar {
+      display: none;
+    }
+    .palette-scroll {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    .swatch-btn {
+      transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.18s ease;
+    }
+    .swatch-btn.active {
+      transform: translateY(-4px) scale(1.1);
+    }
+    .glass-bar {
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+  </style>
+</head>
+<body class="flex flex-col h-[100dvh] w-full bg-slate-50">
+
+  <!-- Start Game Page -->
+  <section id="start-screen" class="fixed inset-0 z-40 flex flex-col items-center justify-between px-6 py-10 overflow-y-auto bg-gradient-to-br from-indigo-50 via-white to-rose-50" style="padding-top: max(2.5rem, var(--safe-top)); padding-bottom: max(2rem, var(--safe-bottom));">
+    <!-- Decorative floating color orbs -->
+    <div class="pointer-events-none fixed inset-0 overflow-hidden">
+      <div class="absolute -top-16 -left-16 w-64 h-64 rounded-full bg-amber-200/40 blur-3xl"></div>
+      <div class="absolute top-1/3 -right-20 w-72 h-72 rounded-full bg-indigo-200/40 blur-3xl"></div>
+      <div class="absolute -bottom-20 left-1/4 w-72 h-72 rounded-full bg-rose-200/40 blur-3xl"></div>
+    </div>
+
+    <div class="relative z-10 w-full max-w-sm flex flex-col items-center text-center my-auto py-4">
+      <!-- Emblem & Decorative Swatch Ring -->
+      <div class="relative mb-6">
+        <div class="w-24 h-24 rounded-3xl bg-gradient-to-tr from-indigo-600 via-violet-500 to-rose-500 p-0.5 shadow-xl shadow-indigo-200/80 rotate-3">
+          <div class="w-full h-full rounded-[22px] bg-white flex items-center justify-center">
+            <i data-lucide="palette" class="w-11 h-11 text-indigo-600 -rotate-3"></i>
+          </div>
+        </div>
+        <span class="absolute -top-2 -right-3 w-7 h-7 rounded-full bg-amber-400 border-2 border-white shadow-md flex items-center justify-center text-[11px] font-extrabold text-slate-900">1</span>
+        <span class="absolute -bottom-2 -left-3 w-7 h-7 rounded-full bg-emerald-500 border-2 border-white shadow-md flex items-center justify-center text-[11px] font-extrabold text-white">2</span>
+        <span class="absolute top-1/2 -right-5 w-6 h-6 rounded-full bg-rose-500 border-2 border-white shadow-md flex items-center justify-center text-[10px] font-extrabold text-white">3</span>
+      </div>
+
+      <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/90 border border-slate-200/80 shadow-sm text-[11px] font-bold text-indigo-600 uppercase tracking-wider mb-3">
+        <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+        Color by Number
+      </span>
+
+      <h1 class="text-4xl font-extrabold tracking-tight text-slate-900 mb-2">ChromaTap</h1>
+      <p class="text-sm text-slate-600 max-w-xs leading-relaxed mb-7">
+        Relax and bring crisp vector illustrations to life. Pinch to zoom in on every detail and tap to fill.
+      </p>
+
+      <!-- Mini Color Preview Strip -->
+      <div class="flex items-center justify-center gap-2 mb-7">
+        <span class="w-4 h-4 rounded-full bg-amber-400 shadow-sm"></span>
+        <span class="w-4 h-4 rounded-full bg-rose-500 shadow-sm"></span>
+        <span class="w-4 h-4 rounded-full bg-indigo-500 shadow-sm"></span>
+        <span class="w-4 h-4 rounded-full bg-teal-500 shadow-sm"></span>
+        <span class="w-4 h-4 rounded-full bg-sky-500 shadow-sm"></span>
+      </div>
+
+      <!-- Primary Actions -->
+      <div class="w-full space-y-3">
+        <button id="btn-start-gallery" class="w-full py-3.5 px-5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white font-bold text-base shadow-lg shadow-indigo-200 flex items-center justify-center gap-2.5 transition">
+          <i data-lucide="layout-grid" class="w-5 h-5"></i>
+          <span>Start Game • Pick a Picture</span>
+        </button>
+        <button id="btn-start-continue" class="w-full py-3 px-5 rounded-2xl bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-700 border border-slate-200 font-bold text-sm shadow-sm flex items-center justify-center gap-2 transition">
+          <i data-lucide="play" class="w-4 h-4 text-indigo-600"></i>
+          <span id="start-continue-label">Quick Play</span>
+        </button>
+      </div>
+
+      <p id="start-progress-summary" class="mt-5 text-xs font-semibold text-slate-400">5 pictures ready to color</p>
+    </div>
+  </section>
+
+  <!-- Top Header -->
+  <header class="glass-bar border-b border-slate-200/80 px-3 py-2 flex items-center justify-between gap-2 z-20 shrink-0" style="padding-top: max(0.5rem, var(--safe-top));">
+    <div class="flex items-center gap-2 min-w-0">
+      <button id="btn-menu" aria-label="Open menu" class="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 transition">
+        <i data-lucide="menu" class="w-4 h-4"></i>
+      </button>
+      <button id="btn-gallery" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 text-xs font-semibold transition">
+        <i data-lucide="layout-grid" class="w-4 h-4"></i>
+        <span>Gallery</span>
+      </button>
+      <div class="min-w-0">
+        <h1 id="pic-title" class="text-sm font-bold text-slate-900 truncate">Sunset Lighthouse</h1>
+        <div class="flex items-center gap-1.5">
+          <div class="w-20 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+            <div id="progress-bar" class="h-full bg-indigo-500 rounded-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+          <span id="progress-text" class="text-[11px] font-semibold text-slate-500">0/0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-1.5 shrink-0">
+      <button id="btn-hint" title="Find next region" class="p-2 rounded-xl bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-600 transition">
+        <i data-lucide="sparkles" class="w-4 h-4"></i>
+      </button>
+      <button id="btn-sound" title="Toggle sound" class="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 transition">
+        <i id="icon-sound" data-lucide="volume-2" class="w-4 h-4"></i>
+      </button>
+      <button id="btn-reset" title="Reset picture" class="p-2 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-600 active:scale-95 text-slate-700 transition">
+        <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Interactive Zoom/Pan Canvas Viewport -->
+  <main id="canvas-viewport" class="flex-1 w-full relative">
+    <div id="zoom-stage">
+      <svg id="art-svg" viewBox="0 0 400 480" class="block shadow-xl rounded-2xl bg-white border border-slate-200/80" style="width: 400px; height: 480px;"></svg>
+    </div>
+
+    <!-- Floating Zoom Controls (Thumb-friendly bottom-right) -->
+    <div class="absolute right-3 bottom-3 flex flex-col gap-1.5 z-10">
+      <button id="btn-zoom-in" aria-label="Zoom in" class="w-10 h-10 rounded-full glass-bar border border-slate-200 shadow-md flex items-center justify-center text-slate-700 hover:bg-white active:scale-90 transition">
+        <i data-lucide="plus" class="w-5 h-5"></i>
+      </button>
+      <div id="zoom-badge" class="px-2 py-0.5 rounded-full bg-slate-800/80 text-white text-[10px] font-bold text-center shadow">
+        1.0x
+      </div>
+      <button id="btn-zoom-out" aria-label="Zoom out" class="w-10 h-10 rounded-full glass-bar border border-slate-200 shadow-md flex items-center justify-center text-slate-700 hover:bg-white active:scale-90 transition">
+        <i data-lucide="minus" class="w-5 h-5"></i>
+      </button>
+      <button id="btn-zoom-fit" aria-label="Fit to screen" class="w-10 h-10 rounded-full glass-bar border border-slate-200 shadow-md flex items-center justify-center text-slate-700 hover:bg-white active:scale-90 transition">
+        <i data-lucide="maximize-2" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+    <!-- Subtle Gesture Hint Pill (auto-fades) -->
+    <div id="gesture-tip" class="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-slate-900/75 text-white text-[11px] font-medium whitespace-nowrap shadow transition-opacity duration-500">
+      Pinch or tap + / - to zoom • Drag to pan • Tap to color
+    </div>
+
+    <!-- Toast feedback -->
+    <div id="toast" class="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 px-3.5 py-2 rounded-full bg-slate-900/90 text-white text-xs font-semibold shadow-lg opacity-0 transition-opacity duration-200 z-30 whitespace-nowrap"></div>
+  </main>
+
+  <!-- Bottom Color Palette -->
+  <footer class="glass-bar border-t border-slate-200/80 px-2 pt-2.5 pb-2 z-20 shrink-0" style="padding-bottom: max(0.65rem, var(--safe-bottom));">
+    <div id="palette-bar" class="palette-scroll flex items-center gap-2.5 overflow-x-auto px-2 py-1"></div>
+  </footer>
+
+  <!-- Slide-Over Menu Drawer -->
+  <div id="menu-modal" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm hidden items-stretch justify-start">
+    <div class="bg-white w-80 max-w-[85vw] h-full shadow-2xl flex flex-col overflow-hidden" style="padding-top: var(--safe-top); padding-bottom: var(--safe-bottom);">
+      <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-sm">
+            <i data-lucide="palette" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-extrabold text-slate-900 leading-tight">ChromaTap</h2>
+            <p id="menu-stats" class="text-[11px] font-medium text-slate-500">0/5 pictures finished</p>
+          </div>
+        </div>
+        <button id="btn-close-menu" aria-label="Close menu" class="p-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-4 space-y-5">
+        <!-- Navigation & Actions -->
+        <div class="space-y-1.5">
+          <p class="px-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">Game</p>
+          <button id="menu-btn-home" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 active:bg-slate-200 text-slate-800 text-sm font-semibold transition">
+            <i data-lucide="home" class="w-4 h-4 text-slate-600"></i>
+            <span>Start Page</span>
+          </button>
+          <button id="menu-btn-gallery" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 active:bg-slate-200 text-slate-800 text-sm font-semibold transition">
+            <i data-lucide="layout-grid" class="w-4 h-4 text-indigo-600"></i>
+            <span>Picture Gallery</span>
+          </button>
+          <button id="menu-btn-hint" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 active:bg-slate-200 text-slate-800 text-sm font-semibold transition">
+            <i data-lucide="sparkles" class="w-4 h-4 text-amber-500"></i>
+            <span>Find Next Region</span>
+          </button>
+          <button id="menu-btn-save" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 active:bg-slate-200 text-slate-800 text-sm font-semibold transition">
+            <i data-lucide="download" class="w-4 h-4 text-emerald-600"></i>
+            <span>Save Artwork as Image</span>
+          </button>
+          <button id="menu-btn-reset" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-rose-50 active:bg-rose-100 text-rose-600 text-sm font-semibold transition">
+            <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+            <span>Reset Current Picture</span>
+          </button>
+        </div>
+
+        <!-- Preferences -->
+        <div class="space-y-2">
+          <p class="px-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">Settings</p>
+          <label class="flex items-center justify-between px-3 py-2.5 rounded-xl bg-slate-50 cursor-pointer">
+            <span class="flex items-center gap-2.5 text-sm font-semibold text-slate-700">
+              <i data-lucide="volume-2" class="w-4 h-4 text-slate-500"></i>
+              Sound Effects
+            </span>
+            <input id="toggle-sound" type="checkbox" checked class="w-4 h-4 accent-indigo-600 rounded" />
+          </label>
+          <label class="flex items-center justify-between px-3 py-2.5 rounded-xl bg-slate-50 cursor-pointer">
+            <span class="flex items-center gap-2.5 text-sm font-semibold text-slate-700">
+              <i data-lucide="eye" class="w-4 h-4 text-slate-500"></i>
+              Highlight Matching Areas
+            </span>
+            <input id="toggle-highlight" type="checkbox" checked class="w-4 h-4 accent-indigo-600 rounded" />
+          </label>
+          <label class="flex items-center justify-between px-3 py-2.5 rounded-xl bg-slate-50 cursor-pointer">
+            <span class="flex items-center gap-2.5 text-sm font-semibold text-slate-700">
+              <i data-lucide="fast-forward" class="w-4 h-4 text-slate-500"></i>
+              Auto-Switch Color
+            </span>
+            <input id="toggle-autoswitch" type="checkbox" checked class="w-4 h-4 accent-indigo-600 rounded" />
+          </label>
+        </div>
+
+        <!-- How to Play -->
+        <div class="rounded-2xl bg-slate-50 border border-slate-100 p-3.5 space-y-2">
+          <p class="text-xs font-bold text-slate-800">How to Play on iPhone</p>
+          <ul class="text-xs text-slate-600 space-y-1.5">
+            <li>• <strong>Pinch</strong> with two fingers (or tap + / -) to zoom up to 6x.</li>
+            <li>• <strong>Drag</strong> with one finger to pan around zoomed areas.</li>
+            <li>• <strong>Tap</strong> a numbered region matching your selected color.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gallery Modal -->
+  <div id="gallery-modal" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm hidden items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[85dvh] flex flex-col overflow-hidden">
+      <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-extrabold text-slate-900">Choose a Picture</h2>
+          <p class="text-xs text-slate-500">Your progress is saved automatically</p>
+        </div>
+        <button id="btn-close-gallery" class="p-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div id="gallery-grid" class="p-4 grid grid-cols-2 gap-3 overflow-y-auto"></div>
+    </div>
+  </div>
+
+  <!-- Reset Confirmation Modal -->
+  <div id="reset-modal" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="bg-white w-full max-w-xs rounded-3xl p-5 shadow-2xl text-center">
+      <div class="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-3">
+        <i data-lucide="rotate-ccw" class="w-6 h-6"></i>
+      </div>
+      <h3 class="text-base font-bold text-slate-900 mb-1">Reset this picture?</h3>
+      <p class="text-xs text-slate-500 mb-4">This will clear all colored regions on <span id="reset-pic-name" class="font-semibold text-slate-700"></span>.</p>
+      <div class="flex gap-2">
+        <button id="btn-cancel-reset" class="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition">Cancel</button>
+        <button id="btn-confirm-reset" class="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition">Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Completion Modal -->
+  <div id="complete-modal" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl text-center">
+      <div class="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3">
+        <i data-lucide="award" class="w-8 h-8"></i>
+      </div>
+      <h3 class="text-xl font-extrabold text-slate-900 mb-1">Masterpiece Complete!</h3>
+      <p id="complete-subtitle" class="text-xs text-slate-500 mb-5">You finished every region.</p>
+      <div class="flex flex-col gap-2">
+        <button id="btn-download-png" class="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold flex items-center justify-center gap-2 transition">
+          <i data-lucide="download" class="w-4 h-4"></i>
+          <span>Save Artwork as Image</span>
+        </button>
+        <button id="btn-next-picture" class="w-full py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-sm font-bold transition">
+          Choose Next Picture
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. PICTURE DEFINITIONS (Rich vector scenes with 28-49 regions each)
+    // =========================================================================
+    const PICTURES = [
+      {
+        id: 'lighthouse',
+        title: 'Sunset Lighthouse',
+        category: 'Coastal',
+        viewBox: '0 0 400 480',
+        palette: {
+          1: { name: 'Sunset Gold', hex: '#FBBF24' },
+          2: { name: 'Coral Sky', hex: '#FB7185' },
+          3: { name: 'Dusk Violet', hex: '#818CF8' },
+          4: { name: 'Ocean Blue', hex: '#0284C7' },
+          5: { name: 'Deep Sea', hex: '#0369A1' },
+          6: { name: 'Cliff Slate', hex: '#475569' },
+          7: { name: 'Tower Cream', hex: '#FEF3C7' },
+          8: { name: 'Crimson', hex: '#E11D48' }
+        },
+        regions: [
+          // Sky bands
+          { id: 'lh-1', num: 3, d: 'M0,0 L400,0 L400,95 Q280,110 180,90 Q80,75 0,95 Z', lx: 200, ly: 48, fs: 13 },
+          { id: 'lh-2', num: 2, d: 'M0,95 Q80,75 180,90 Q280,110 400,95 L400,195 Q270,210 160,185 Q70,170 0,195 Z', lx: 90, ly: 135, fs: 13 },
+          { id: 'lh-3', num: 1, d: 'M0,195 Q70,170 160,185 Q270,210 400,195 L400,295 L0,295 Z', lx: 70, ly: 245, fs: 13 },
+          // Sun & Glow
+          { id: 'lh-4', num: 1, d: 'M120,235 A55,55 0 1,1 230,235 A55,55 0 1,1 120,235 Z', lx: 175, ly: 235, fs: 14 },
+          { id: 'lh-5', num: 2, d: 'M142,235 A33,33 0 1,1 208,235 A33,33 0 1,1 142,235 Z', lx: 175, ly: 235, fs: 12 },
+          // Clouds
+          { id: 'lh-6', num: 7, d: 'M35,70 Q50,48 75,55 Q95,40 115,58 Q135,58 135,75 L35,75 Z', lx: 85, ly: 63, fs: 10 },
+          { id: 'lh-7', num: 7, d: 'M260,55 Q278,38 300,48 Q322,35 342,52 Q360,55 358,70 L260,70 Z', lx: 310, ly: 55, fs: 10 },
+          // Light beam
+          { id: 'lh-8', num: 1, d: 'M278,142 L20,85 L20,165 L278,155 Z', lx: 125, ly: 128, fs: 11 },
+          // Ocean waves
+          { id: 'lh-9', num: 4, d: 'M0,295 L400,295 L400,340 Q320,330 240,342 Q140,355 0,338 Z', lx: 130, ly: 318, fs: 12 },
+          { id: 'lh-10', num: 5, d: 'M0,338 Q140,355 240,342 Q320,330 400,340 L400,390 Q280,378 180,392 Q80,405 0,388 Z', lx: 120, ly: 365, fs: 12 },
+          { id: 'lh-11', num: 4, d: 'M0,388 Q80,405 180,392 Q280,378 400,390 L400,440 Q260,428 150,442 Q60,452 0,438 Z', lx: 100, ly: 416, fs: 12 },
+          { id: 'lh-12', num: 5, d: 'M0,438 Q60,452 150,442 Q260,428 400,440 L400,480 L0,480 Z', lx: 100, ly: 462, fs: 12 },
+          // Sailboat
+          { id: 'lh-13', num: 7, d: 'M78,312 L106,312 L100,324 L84,324 Z', lx: 92, ly: 318, fs: 8 },
+          { id: 'lh-14', num: 8, d: 'M92,272 L92,310 L114,310 Z', lx: 100, ly: 298, fs: 8 },
+          { id: 'lh-15', num: 7, d: 'M90,278 L90,310 L74,310 Z', lx: 84, ly: 299, fs: 8 },
+          // Cliff
+          { id: 'lh-16', num: 6, d: 'M185,480 L215,380 L255,342 L345,342 L400,370 L400,480 Z', lx: 300, ly: 425, fs: 14 },
+          { id: 'lh-17', num: 3, d: 'M215,380 L255,342 L290,342 L265,415 L195,445 Z', lx: 245, ly: 382, fs: 11 },
+          { id: 'lh-18', num: 6, d: 'M320,342 L345,342 L400,370 L400,425 L350,395 Z', lx: 368, ly: 382, fs: 11 },
+          // Lighthouse Base & Stripes
+          { id: 'lh-19', num: 7, d: 'M262,342 L338,342 L332,302 L268,302 Z', lx: 300, ly: 322, fs: 11 },
+          { id: 'lh-20', num: 8, d: 'M268,302 L332,302 L326,262 L274,262 Z', lx: 300, ly: 282, fs: 11 },
+          { id: 'lh-21', num: 7, d: 'M274,262 L326,262 L320,222 L280,222 Z', lx: 300, ly: 242, fs: 11 },
+          { id: 'lh-22', num: 8, d: 'M280,222 L320,222 L314,182 L286,182 Z', lx: 300, ly: 202, fs: 10 },
+          // Balcony & Lantern Room
+          { id: 'lh-23', num: 6, d: 'M274,182 L326,182 L326,170 L274,170 Z', lx: 300, ly: 176, fs: 8 },
+          { id: 'lh-24', num: 1, d: 'M284,170 L316,170 L316,136 L284,136 Z', lx: 300, ly: 153, fs: 10 },
+          { id: 'lh-25', num: 8, d: 'M278,136 L322,136 L300,108 Z', lx: 300, ly: 126, fs: 9 },
+          // Door & Windows
+          { id: 'lh-26', num: 6, d: 'M292,342 L308,342 L308,320 Q300,312 292,320 Z', lx: 300, ly: 330, fs: 8 },
+          { id: 'lh-27', num: 4, d: 'M294,250 L306,250 L306,234 L294,234 Z', lx: 300, ly: 242, fs: 8 },
+          { id: 'lh-28', num: 4, d: 'M295,208 L305,208 L305,194 L295,194 Z', lx: 300, ly: 201, fs: 7 }
+        ]
+      },
+      {
+        id: 'mandala',
+        title: 'Geometric Mandala',
+        category: 'Pattern',
+        viewBox: '0 0 400 480',
+        palette: {
+          1: { name: 'Royal Indigo', hex: '#4F46E5' },
+          2: { name: 'Teal Mint', hex: '#14B8A6' },
+          3: { name: 'Warm Amber', hex: '#F59E0B' },
+          4: { name: 'Rose Pink', hex: '#F43F5E' },
+          5: { name: 'Sky Cyan', hex: '#0EA5E9' },
+          6: { name: 'Violet', hex: '#8B5CF6' },
+          7: { name: 'Soft Cream', hex: '#FEF3C7' }
+        },
+        regions: (() => {
+          const regs = [];
+          const cx = 200, cy = 240;
+          // Background corners
+          regs.push({ id: 'md-bg1', num: 1, d: 'M0,0 L200,0 L200,60 A180,180 0 0,0 20,240 L0,240 Z', lx: 55, ly: 55, fs: 13 });
+          regs.push({ id: 'md-bg2', num: 1, d: 'M400,0 L200,0 L200,60 A180,180 0 0,1 380,240 L400,240 Z', lx: 345, ly: 55, fs: 13 });
+          regs.push({ id: 'md-bg3', num: 1, d: 'M0,480 L200,480 L200,420 A180,180 0 0,1 20,240 L0,240 Z', lx: 55, ly: 425, fs: 13 });
+          regs.push({ id: 'md-bg4', num: 1, d: 'M400,480 L200,480 L200,420 A180,180 0 0,0 380,240 L400,240 Z', lx: 345, ly: 425, fs: 13 });
+          // Top/Bottom decorative bars
+          regs.push({ id: 'md-tb1', num: 5, d: 'M0,0 L400,0 L400,26 L0,26 Z', lx: 200, ly: 13, fs: 10 });
+          regs.push({ id: 'md-tb2', num: 5, d: 'M0,454 L400,454 L400,480 L0,480 Z', lx: 200, ly: 467, fs: 10 });
+
+          const pt = (r, deg) => {
+            const rad = (deg - 90) * Math.PI / 180;
+            return [+(cx + r * Math.cos(rad)).toFixed(1), +(cy + r * Math.sin(rad)).toFixed(1)];
+          };
+
+          // Outer 12 petals (r 130 -> 182)
+          for (let i = 0; i < 12; i++) {
+            const a0 = i * 30, a1 = (i + 1) * 30, amid = a0 + 15;
+            const [x1, y1] = pt(132, a0);
+            const [x2, y2] = pt(182, amid);
+            const [x3, y3] = pt(132, a1);
+            const [lx, ly] = pt(154, amid);
+            regs.push({
+              id: `md-op-${i}`,
+              num: i % 2 === 0 ? 4 : 6,
+              d: `M${x1},${y1} Q${pt(168, a0+6)[0]},${pt(168, a0+6)[1]} ${x2},${y2} Q${pt(168, a1-6)[0]},${pt(168, a1-6)[1]} ${x3},${y3} A132,132 0 0,0 ${x1},${y1} Z`,
+              lx, ly, fs: 10
+            });
+          }
+          // Outer gap triangles (r 132 -> 180)
+          for (let i = 0; i < 12; i++) {
+            const a0 = i * 30 - 15, a1 = i * 30 + 15, amid = i * 30;
+            const [p1x, p1y] = pt(182, a0);
+            const [p2x, p2y] = pt(182, a1);
+            const [p3x, p3y] = pt(132, amid);
+            const [lx, ly] = pt(166, amid);
+            regs.push({
+              id: `md-og-${i}`,
+              num: 7,
+              d: `M${p1x},${p1y} A182,182 0 0,1 ${p2x},${p2y} L${p3x},${p3y} Z`,
+              lx, ly, fs: 8
+            });
+          }
+          // Middle ring 12 segments (r 88 -> 132)
+          for (let i = 0; i < 12; i++) {
+            const a0 = i * 30, a1 = (i + 1) * 30, amid = a0 + 15;
+            const [i1x, i1y] = pt(88, a0);
+            const [i2x, i2y] = pt(88, a1);
+            const [o1x, o1y] = pt(132, a0);
+            const [o2x, o2y] = pt(132, a1);
+            const [lx, ly] = pt(110, amid);
+            regs.push({
+              id: `md-mr-${i}`,
+              num: i % 2 === 0 ? 2 : 5,
+              d: `M${i1x},${i1y} L${o1x},${o1y} A132,132 0 0,1 ${o2x},${o2y} L${i2x},${i2y} A88,88 0 0,0 ${i1x},${i1y} Z`,
+              lx, ly, fs: 10
+            });
+          }
+          // Inner 8-pointed star petals (r 42 -> 88)
+          for (let i = 0; i < 8; i++) {
+            const a0 = i * 45, a1 = (i + 1) * 45, amid = a0 + 22.5;
+            const [i1x, i1y] = pt(42, a0);
+            const [i2x, i2y] = pt(42, a1);
+            const [tipx, tipy] = pt(88, amid);
+            const [lx, ly] = pt(64, amid);
+            regs.push({
+              id: `md-ip-${i}`,
+              num: i % 2 === 0 ? 3 : 4,
+              d: `M${i1x},${i1y} L${tipx},${tipy} L${i2x},${i2y} A42,42 0 0,0 ${i1x},${i1y} Z`,
+              lx, ly, fs: 9
+            });
+          }
+          // Inner star gaps
+          for (let i = 0; i < 8; i++) {
+            const a0 = i * 45 - 22.5, a1 = i * 45 + 22.5, amid = i * 45;
+            const [p1x, p1y] = pt(88, a0);
+            const [p2x, p2y] = pt(88, a1);
+            const [p3x, p3y] = pt(42, amid);
+            const [lx, ly] = pt(72, amid);
+            regs.push({
+              id: `md-ig-${i}`,
+              num: 6,
+              d: `M${p1x},${p1y} A88,88 0 0,1 ${p2x},${p2y} L${p3x},${p3y} Z`,
+              lx, ly, fs: 8
+            });
+          }
+          // Core circle
+          regs.push({
+            id: 'md-core',
+            num: 3,
+            d: `M${cx-42},${cy} A42,42 0 1,1 ${cx+42},${cy} A42,42 0 1,1 ${cx-42},${cy} Z`,
+            lx: cx, ly: cy, fs: 13
+          });
+          return regs;
+        })()
+      },
+      {
+        id: 'cabin',
+        title: 'Mountain Cabin',
+        category: 'Nature',
+        viewBox: '0 0 400 480',
+        palette: {
+          1: { name: 'Alpine Sky', hex: '#38BDF8' },
+          2: { name: 'Snow White', hex: '#F1F5F9' },
+          3: { name: 'Slate Peak', hex: '#64748B' },
+          4: { name: 'Deep Pine', hex: '#15803D' },
+          5: { name: 'Forest Green', hex: '#22C55E' },
+          6: { name: 'Cedar Wood', hex: '#B45309' },
+          7: { name: 'Dark Roof', hex: '#334155' },
+          8: { name: 'Warm Glow', hex: '#FACC15' },
+          9: { name: 'Lake Blue', hex: '#0284C7' }
+        },
+        regions: [
+          // Sky
+          { id: 'cb-1', num: 1, d: 'M0,0 L400,0 L400,220 L0,220 Z', lx: 200, ly: 55, fs: 14 },
+          // Clouds
+          { id: 'cb-2', num: 2, d: 'M40,65 Q58,42 82,52 Q105,38 126,55 Q142,58 140,74 L40,74 Z', lx: 90, ly: 60, fs: 10 },
+          { id: 'cb-3', num: 2, d: 'M270,50 Q290,32 315,44 Q338,34 355,52 Q368,58 364,70 L270,70 Z', lx: 318, ly: 55, fs: 10 },
+          // Distant Mountains
+          { id: 'cb-4', num: 3, d: 'M0,250 L110,115 L220,250 Z', lx: 110, ly: 205, fs: 12 },
+          { id: 'cb-5', num: 2, d: 'M74,159 L110,115 L146,159 L126,148 L110,162 L94,148 Z', lx: 110, ly: 140, fs: 9 },
+          { id: 'cb-6', num: 3, d: 'M170,250 L295,95 L400,235 L400,250 Z', lx: 295, ly: 195, fs: 12 },
+          { id: 'cb-7', num: 2, d: 'M252,148 L295,95 L335,148 L315,138 L295,152 L274,138 Z', lx: 295, ly: 126, fs: 9 },
+          // Meadow Hills
+          { id: 'cb-8', num: 5, d: 'M0,245 Q120,220 240,248 Q330,268 400,240 L400,340 L0,340 Z', lx: 60, ly: 285, fs: 12 },
+          // Pine Trees Left
+          { id: 'cb-9', num: 4, d: 'M25,295 L55,215 L85,295 Z', lx: 55, ly: 268, fs: 10 },
+          { id: 'cb-10', num: 4, d: 'M32,255 L55,195 L78,255 Z', lx: 55, ly: 232, fs: 9 },
+          { id: 'cb-11', num: 6, d: 'M49,295 L61,295 L61,322 L49,322 Z', lx: 55, ly: 309, fs: 8 },
+          // Pine Trees Right
+          { id: 'cb-12', num: 4, d: 'M312,295 L348,200 L384,295 Z', lx: 348, ly: 265, fs: 10 },
+          { id: 'cb-13', num: 4, d: 'M322,248 L348,178 L374,248 Z', lx: 348, ly: 222, fs: 9 },
+          { id: 'cb-14', num: 6, d: 'M341,295 L355,295 L355,325 L341,325 Z', lx: 348, ly: 310, fs: 8 },
+          // Cabin Chimney & Smoke
+          { id: 'cb-15', num: 3, d: 'M236,182 L258,182 L258,232 L236,232 Z', lx: 247, ly: 205, fs: 9 },
+          { id: 'cb-16', num: 2, d: 'M242,165 Q235,148 250,138 Q265,126 254,110 Q272,118 264,138 Q254,152 252,165 Z', lx: 254, ly: 142, fs: 8 },
+          // Cabin Body & Roof
+          { id: 'cb-17', num: 6, d: 'M122,335 L122,255 L200,192 L278,255 L278,335 Z', lx: 200, ly: 295, fs: 12 },
+          { id: 'cb-18', num: 7, d: 'M102,265 L200,180 L298,265 L284,276 L200,204 L116,276 Z', lx: 200, ly: 215, fs: 10 },
+          // Cabin Door & Windows
+          { id: 'cb-19', num: 7, d: 'M184,335 L184,290 L216,290 L216,335 Z', lx: 200, ly: 314, fs: 9 },
+          { id: 'cb-20', num: 8, d: 'M140,282 L168,282 L168,310 L140,310 Z', lx: 154, ly: 296, fs: 9 },
+          { id: 'cb-21', num: 8, d: 'M232,282 L260,282 L260,310 L232,310 Z', lx: 246, ly: 296, fs: 9 },
+          { id: 'cb-22', num: 8, d: 'M186,238 L214,238 L214,262 L186,262 Z', lx: 200, ly: 250, fs: 8 },
+          // Shoreline & Lake
+          { id: 'cb-23', num: 4, d: 'M0,335 L400,335 L400,365 Q280,355 180,368 Q90,378 0,362 Z', lx: 200, ly: 350, fs: 11 },
+          { id: 'cb-24', num: 9, d: 'M0,362 Q90,378 180,368 Q280,355 400,365 L400,425 L0,425 Z', lx: 120, ly: 396, fs: 12 },
+          { id: 'cb-25', num: 1, d: 'M0,425 L400,425 L400,480 L0,480 Z', lx: 120, ly: 452, fs: 12 },
+          // Boat on Lake
+          { id: 'cb-26', num: 6, d: 'M255,405 L315,405 L304,422 L266,422 Z', lx: 285, ly: 414, fs: 9 }
+        ]
+      },
+      {
+        id: 'cactus',
+        title: 'Desert Canyon',
+        category: 'Landscape',
+        viewBox: '0 0 400 480',
+        palette: {
+          1: { name: 'Sun Amber', hex: '#F59E0B' },
+          2: { name: 'Peach Sky', hex: '#FDBA74' },
+          3: { name: 'Terracotta', hex: '#EA580C' },
+          4: { name: 'Canyon Red', hex: '#B91C1C' },
+          5: { name: 'Sand Dune', hex: '#FDE68A' },
+          6: { name: 'Sage Green', hex: '#16A34A' },
+          7: { name: 'Deep Cactus', hex: '#166534' },
+          8: { name: 'Bloom Pink', hex: '#EC4899' }
+        },
+        regions: [
+          { id: 'ct-1', num: 2, d: 'M0,0 L400,0 L400,155 L0,155 Z', lx: 200, ly: 65, fs: 14 },
+          { id: 'ct-2', num: 1, d: 'M145,125 A55,55 0 1,1 255,125 A55,55 0 1,1 145,125 Z', lx: 200, ly: 125, fs: 14 },
+          // Distant Mesa
+          { id: 'ct-3', num: 3, d: 'M0,155 L75,155 L95,120 L165,120 L185,165 L245,165 L270,128 L345,128 L365,160 L400,160 L400,255 L0,255 Z', lx: 130, ly: 195, fs: 12 },
+          { id: 'ct-4', num: 4, d: 'M235,165 L270,128 L345,128 L365,160 L400,160 L400,255 L220,255 Z', lx: 315, ly: 195, fs: 12 },
+          // Rolling Dunes
+          { id: 'ct-5', num: 5, d: 'M0,250 Q110,225 220,258 Q315,282 400,248 L400,340 L0,340 Z', lx: 200, ly: 292, fs: 13 },
+          { id: 'ct-6', num: 3, d: 'M0,330 Q140,305 260,340 Q340,362 400,335 L400,480 L0,480 Z', lx: 320, ly: 415, fs: 13 },
+          { id: 'ct-7', num: 5, d: 'M0,385 Q120,362 240,400 Q320,425 400,395 L400,480 L0,480 Z', lx: 120, ly: 438, fs: 13 },
+          // Main Saguaro Cactus
+          { id: 'ct-8', num: 6, d: 'M182,425 L182,198 Q182,178 200,178 Q218,178 218,198 L218,425 Z', lx: 200, ly: 310, fs: 12 },
+          { id: 'ct-9', num: 7, d: 'M182,300 L142,300 Q124,300 124,282 L124,234 Q124,220 138,220 Q152,220 152,234 L152,274 L182,274 Z', lx: 145, ly: 268, fs: 10 },
+          { id: 'ct-10', num: 7, d: 'M218,274 L258,274 Q276,274 276,256 L276,214 Q276,200 262,200 Q248,200 248,214 L248,248 L218,248 Z', lx: 256, ly: 245, fs: 10 },
+          // Cactus Flowers
+          { id: 'ct-11', num: 8, d: 'M190,178 Q200,156 210,178 Z', lx: 200, ly: 171, fs: 8 },
+          { id: 'ct-12', num: 8, d: 'M129,220 Q138,200 147,220 Z', lx: 138, ly: 213, fs: 7 },
+          { id: 'ct-13', num: 8, d: 'M253,200 Q262,180 271,200 Z', lx: 262, ly: 193, fs: 7 },
+          // Small Side Cactus Left
+          { id: 'ct-14', num: 6, d: 'M54,375 L54,282 Q54,268 68,268 Q82,268 82,282 L82,375 Z', lx: 68, ly: 325, fs: 10 },
+          { id: 'ct-15', num: 7, d: 'M82,330 L102,330 Q112,330 112,318 L112,295 Q112,286 103,286 Q94,286 94,295 L94,314 L82,314 Z', lx: 101, ly: 312, fs: 8 },
+          // Prickly Pear Right
+          { id: 'ct-16', num: 6, d: 'M308,395 A22,28 0 1,1 352,395 A22,28 0 1,1 308,395 Z', lx: 330, ly: 395, fs: 10 },
+          { id: 'ct-17', num: 7, d: 'M335,368 A16,20 0 1,1 367,368 A16,20 0 1,1 335,368 Z', lx: 351, ly: 368, fs: 9 },
+          { id: 'ct-18', num: 8, d: 'M343,348 Q351,330 359,348 Z', lx: 351, ly: 342, fs: 7 },
+          // Rocks
+          { id: 'ct-19', num: 4, d: 'M24,445 Q35,420 62,424 Q82,428 85,448 Z', lx: 55, ly: 438, fs: 9 },
+          { id: 'ct-20', num: 4, d: 'M252,452 Q265,430 292,434 Q312,438 316,456 Z', lx: 284, ly: 446, fs: 9 }
+        ]
+      },
+      {
+        id: 'toucan',
+        title: 'Tropical Toucan',
+        category: 'Animals',
+        viewBox: '0 0 400 480',
+        palette: {
+          1: { name: 'Lagoon Sky', hex: '#BAE6FD' },
+          2: { name: 'Emerald Leaf', hex: '#10B981' },
+          3: { name: 'Jungle Green', hex: '#047857' },
+          4: { name: 'Obsidian', hex: '#1E293B' },
+          5: { name: 'Golden Throat', hex: '#FACC15' },
+          6: { name: 'Tangerine', hex: '#F97316' },
+          7: { name: 'Hibiscus Red', hex: '#F43F5E' },
+          8: { name: 'Branch Bark', hex: '#78350F' }
+        },
+        regions: [
+          // Background
+          { id: 'tc-1', num: 1, d: 'M0,0 L400,0 L400,480 L0,480 Z', lx: 50, ly: 55, fs: 14 },
+          // Corner Tropical Leaves
+          { id: 'tc-2', num: 2, d: 'M0,0 L165,0 Q135,75 65,115 Q25,135 0,130 Z', lx: 65, ly: 55, fs: 12 },
+          { id: 'tc-3', num: 3, d: 'M400,0 L265,0 Q290,70 350,105 Q380,120 400,118 Z', lx: 348, ly: 52, fs: 11 },
+          { id: 'tc-4', num: 2, d: 'M0,480 L0,335 Q75,355 115,415 Q138,450 135,480 Z', lx: 55, ly: 428, fs: 12 },
+          { id: 'tc-5', num: 3, d: 'M400,480 L400,340 Q325,365 288,425 Q268,455 270,480 Z', lx: 345, ly: 430, fs: 12 },
+          // Tree Branch
+          { id: 'tc-6', num: 8, d: 'M0,320 Q150,295 280,318 Q350,330 400,312 L400,350 Q340,366 270,354 Q140,332 0,358 Z', lx: 325, ly: 335, fs: 11 },
+          // Toucan Tail & Body
+          { id: 'tc-7', num: 4, d: 'M105,342 L78,425 L118,432 L145,348 Z', lx: 110, ly: 392, fs: 10 },
+          { id: 'tc-8', num: 4, d: 'M122,190 Q105,260 120,338 Q165,352 205,332 Q232,265 215,190 Q190,145 155,152 Q132,158 122,190 Z', lx: 145, ly: 295, fs: 12 },
+          // Wing
+          { id: 'tc-9', num: 3, d: 'M118,220 Q108,280 128,325 Q162,315 170,255 Q162,218 118,220 Z', lx: 142, ly: 272, fs: 10 },
+          // Golden Chest & Face Patch
+          { id: 'tc-10', num: 5, d: 'M165,162 Q208,162 214,205 Q214,252 182,258 Q156,245 162,198 Z', lx: 186, ly: 214, fs: 11 },
+          { id: 'tc-11', num: 1, d: 'M168,166 A18,18 0 1,1 204,166 A18,18 0 1,1 168,166 Z', lx: 186, ly: 166, fs: 9 },
+          { id: 'tc-12', num: 4, d: 'M180,166 A7,7 0 1,1 194,166 A7,7 0 1,1 180,166 Z', lx: 187, ly: 166, fs: 6 },
+          // Beak (3 color sections!)
+          { id: 'tc-13', num: 5, d: 'M208,148 Q242,145 256,158 L252,196 Q225,198 208,188 Z', lx: 232, ly: 172, fs: 10 },
+          { id: 'tc-14', num: 6, d: 'M256,158 Q305,162 325,182 L252,196 Z', lx: 282, ly: 178, fs: 10 },
+          { id: 'tc-15', num: 7, d: 'M298,168 Q332,178 338,205 Q318,200 296,192 Z', lx: 318, ly: 188, fs: 8 },
+          // Hibiscus Flower
+          { id: 'tc-16', num: 7, d: 'M295,280 A20,20 0 1,1 325,258 A20,20 0 1,1 295,280 Z', lx: 310, ly: 268, fs: 9 },
+          { id: 'tc-17', num: 7, d: 'M325,260 A20,20 0 1,1 355,282 A20,20 0 1,1 325,260 Z', lx: 342, ly: 270, fs: 9 },
+          { id: 'tc-18', num: 7, d: 'M302,306 A20,20 0 1,1 334,306 A20,20 0 1,1 302,306 Z', lx: 318, ly: 306, fs: 9 },
+          { id: 'tc-19', num: 5, d: 'M314,282 A10,10 0 1,1 334,282 A10,10 0 1,1 314,282 Z', lx: 324, ly: 282, fs: 7 }
+        ]
+      },
+      {
+        id: 'space',
+        title: 'Rocket in Space',
+        category: 'Space',
+        viewBox: '0 0 400 480',
+        palette: {
+          1: { name: 'Deep Cosmos', hex: '#0F172A' },
+          2: { name: 'Nebula Purple', hex: '#6366F1' },
+          3: { name: 'Rocket White', hex: '#F1F5F9' },
+          4: { name: 'Crimson Fin', hex: '#EF4444' },
+          5: { name: 'Flame Orange', hex: '#F97316' },
+          6: { name: 'Star Gold', hex: '#FACC15' },
+          7: { name: 'Planet Teal', hex: '#14B8A6' },
+          8: { name: 'Porthole Cyan', hex: '#38BDF8' }
+        },
+        regions: [
+          // Space backdrop & nebula band
+          { id: 'sp-1', num: 1, d: 'M0,0 L400,0 L400,480 L0,480 Z', lx: 48, ly: 52, fs: 14 },
+          { id: 'sp-2', num: 2, d: 'M0,130 Q120,75 230,145 Q320,200 400,150 L400,310 Q290,355 180,295 Q85,240 0,290 Z', lx: 55, ly: 215, fs: 13 },
+          // Ringed Planet (top right)
+          { id: 'sp-3', num: 7, d: 'M275,92 A42,42 0 1,1 359,92 A42,42 0 1,1 275,92 Z', lx: 317, ly: 92, fs: 12 },
+          { id: 'sp-4', num: 6, d: 'M245,105 Q317,138 389,78 Q384,65 360,72 Q317,114 274,90 Q248,92 245,105 Z', lx: 317, ly: 108, fs: 9 },
+          // Moon (top left)
+          { id: 'sp-5', num: 6, d: 'M42,88 A34,34 0 1,1 110,88 A34,34 0 1,1 42,88 Z', lx: 76, ly: 88, fs: 11 },
+          { id: 'sp-6', num: 5, d: 'M58,76 A8,8 0 1,1 74,76 A8,8 0 1,1 58,76 Z', lx: 66, ly: 76, fs: 7 },
+          { id: 'sp-7', num: 5, d: 'M80,98 A10,10 0 1,1 100,98 A10,10 0 1,1 80,98 Z', lx: 90, ly: 98, fs: 7 },
+          // Small Planet (bottom right)
+          { id: 'sp-8', num: 4, d: 'M302,380 A30,30 0 1,1 362,380 A30,30 0 1,1 302,380 Z', lx: 332, ly: 380, fs: 10 },
+          // Stars
+          { id: 'sp-9', num: 6, d: 'M200,32 L206,46 L220,50 L206,54 L200,68 L194,54 L180,50 L194,46 Z', lx: 200, ly: 50, fs: 8 },
+          { id: 'sp-10', num: 6, d: 'M62,340 L67,352 L79,356 L67,360 L62,372 L57,360 L45,356 L57,352 Z', lx: 62, ly: 356, fs: 7 },
+          { id: 'sp-11', num: 6, d: 'M348,225 L353,237 L365,241 L353,245 L348,257 L343,245 L331,241 L343,237 Z', lx: 348, ly: 241, fs: 7 },
+          // Rocket Exhaust Flames
+          { id: 'sp-12', num: 5, d: 'M172,340 L228,340 L216,422 L200,455 L184,422 Z', lx: 200, ly: 405, fs: 11 },
+          { id: 'sp-13', num: 6, d: 'M184,340 L216,340 L208,395 L200,418 L192,395 Z', lx: 200, ly: 372, fs: 10 },
+          // Rocket Fins
+          { id: 'sp-14', num: 4, d: 'M158,270 L118,325 L118,352 L162,332 Z', lx: 138, ly: 322, fs: 10 },
+          { id: 'sp-15', num: 4, d: 'M242,270 L282,325 L282,352 L238,332 Z', lx: 262, ly: 322, fs: 10 },
+          // Rocket Nose & Body
+          { id: 'sp-16', num: 4, d: 'M200,115 Q232,155 238,185 L162,185 Q168,155 200,115 Z', lx: 200, ly: 158, fs: 10 },
+          { id: 'sp-17', num: 3, d: 'M162,185 L238,185 Q248,255 236,332 L164,332 Q152,255 162,185 Z', lx: 200, ly: 288, fs: 12 },
+          { id: 'sp-18', num: 4, d: 'M164,320 L236,320 L232,340 L168,340 Z', lx: 200, ly: 330, fs: 8 },
+          // Porthole Window
+          { id: 'sp-19', num: 7, d: 'M172,232 A28,28 0 1,1 228,232 A28,28 0 1,1 172,232 Z', lx: 200, ly: 214, fs: 8 },
+          { id: 'sp-20', num: 8, d: 'M182,232 A18,18 0 1,1 218,232 A18,18 0 1,1 182,232 Z', lx: 200, ly: 232, fs: 10 }
+        ]
+      },
+      {
+        id: 'reef',
+        title: 'Coral Reef',
+        category: 'Underwater',
+        viewBox: '0 0 400 480',
+        palette: {
+          1: { name: 'Sunlit Water', hex: '#7DD3FC' },
+          2: { name: 'Ocean Mid', hex: '#0284C7' },
+          3: { name: 'Deep Trench', hex: '#0369A1' },
+          4: { name: 'Warm Sand', hex: '#FDE68A' },
+          5: { name: 'Coral Pink', hex: '#FB7185' },
+          6: { name: 'Seaweed Green', hex: '#10B981' },
+          7: { name: 'Clownfish Orange', hex: '#F97316' },
+          8: { name: 'Pearl White', hex: '#F8FAFC' }
+        },
+        regions: [
+          // Water bands
+          { id: 'rf-1', num: 1, d: 'M0,0 L400,0 L400,135 Q280,155 170,132 Q80,115 0,140 Z', lx: 200, ly: 68, fs: 14 },
+          { id: 'rf-2', num: 2, d: 'M0,140 Q80,115 170,132 Q280,155 400,135 L400,285 Q280,268 180,290 Q90,308 0,282 Z', lx: 75, ly: 205, fs: 13 },
+          { id: 'rf-3', num: 3, d: 'M0,282 Q90,308 180,290 Q280,268 400,285 L400,395 L0,395 Z', lx: 200, ly: 330, fs: 13 },
+          // Sandy seabed
+          { id: 'rf-4', num: 4, d: 'M0,395 Q120,375 240,398 Q330,412 400,388 L400,480 L0,480 Z', lx: 200, ly: 442, fs: 13 },
+          // Seaweed Left
+          { id: 'rf-5', num: 6, d: 'M36,415 Q22,350 48,300 Q65,260 44,215 Q72,250 66,305 Q52,358 58,415 Z', lx: 49, ly: 325, fs: 9 },
+          { id: 'rf-6', num: 6, d: 'M72,412 Q92,355 76,305 Q64,272 86,238 Q100,275 94,322 Q105,365 92,412 Z', lx: 85, ly: 345, fs: 9 },
+          // Coral Right
+          { id: 'rf-7', num: 5, d: 'M295,415 L295,335 Q270,315 274,285 Q284,280 294,302 L305,260 Q318,258 320,285 L324,320 Q344,292 356,304 Q360,322 336,348 L336,415 Z', lx: 315, ly: 348, fs: 10 },
+          { id: 'rf-8', num: 5, d: 'M145,408 Q145,368 175,368 Q205,368 205,408 Z', lx: 175, ly: 390, fs: 10 },
+          // Big Fish (center)
+          { id: 'rf-9', num: 7, d: 'M152,190 Q205,148 258,190 Q205,232 152,190 Z', lx: 210, ly: 190, fs: 12 },
+          { id: 'rf-10', num: 8, d: 'M182,168 L196,162 L196,218 L182,212 Z', lx: 189, ly: 190, fs: 8 },
+          { id: 'rf-11', num: 7, d: 'M154,190 L124,166 L132,190 L124,214 Z', lx: 137, ly: 190, fs: 8 },
+          { id: 'rf-12', num: 8, d: 'M232,184 A6,6 0 1,1 244,184 A6,6 0 1,1 232,184 Z', lx: 238, ly: 184, fs: 6 },
+          // Small Fish (top right)
+          { id: 'rf-13', num: 7, d: 'M292,115 Q325,92 355,115 Q325,138 292,115 Z', lx: 325, ly: 115, fs: 9 },
+          { id: 'rf-14', num: 5, d: 'M294,115 L276,100 L280,115 L276,130 Z', lx: 284, ly: 115, fs: 7 },
+          // Starfish & Shell on Sand
+          { id: 'rf-15', num: 5, d: 'M98,428 L106,442 L122,444 L110,455 L114,470 L98,462 L82,470 L86,455 L74,444 L90,442 Z', lx: 98, ly: 452, fs: 8 },
+          { id: 'rf-16', num: 8, d: 'M252,446 Q252,424 274,424 Q296,424 296,446 Z', lx: 274, ly: 438, fs: 8 },
+          // Bubbles
+          { id: 'rf-17', num: 8, d: 'M252,140 A10,10 0 1,1 272,140 A10,10 0 1,1 252,140 Z', lx: 262, ly: 140, fs: 7 },
+          { id: 'rf-18', num: 8, d: 'M264,108 A7,7 0 1,1 278,108 A7,7 0 1,1 264,108 Z', lx: 271, ly: 108, fs: 6 },
+          { id: 'rf-19', num: 8, d: 'M135,120 A12,12 0 1,1 159,120 A12,12 0 1,1 135,120 Z', lx: 147, ly: 120, fs: 8 }
+        ]
+      },
+      {
+        id: 'balloons',
+        title: 'Hot Air Balloons',
+        category: 'Sky',
+        viewBox: '0 0 400 480',
+        palette: {
+          1: { name: 'Clear Sky', hex: '#BAE6FD' },
+          2: { name: 'Cloud White', hex: '#F8FAFC' },
+          3: { name: 'Meadow Green', hex: '#22C55E' },
+          4: { name: 'Hill Emerald', hex: '#15803D' },
+          5: { name: 'Balloon Coral', hex: '#F43F5E' },
+          6: { name: 'Balloon Gold', hex: '#FBBF24' },
+          7: { name: 'Balloon Indigo', hex: '#6366F1' },
+          8: { name: 'Wicker Brown', hex: '#92400E' }
+        },
+        regions: [
+          { id: 'hb-1', num: 1, d: 'M0,0 L400,0 L400,360 L0,360 Z', lx: 45, ly: 48, fs: 14 },
+          // Clouds
+          { id: 'hb-2', num: 2, d: 'M22,95 Q42,68 72,82 Q98,66 118,86 Q135,90 132,108 L22,108 Z', lx: 78, ly: 92, fs: 10 },
+          { id: 'hb-3', num: 2, d: 'M278,72 Q298,48 326,60 Q350,48 368,66 Q385,70 382,86 L278,86 Z', lx: 332, ly: 72, fs: 10 },
+          // Rolling Hills
+          { id: 'hb-4', num: 3, d: 'M0,355 Q110,320 220,358 Q315,388 400,348 L400,480 L0,480 Z', lx: 120, ly: 392, fs: 13 },
+          { id: 'hb-5', num: 4, d: 'M0,415 Q140,385 265,425 Q340,448 400,418 L400,480 L0,480 Z', lx: 290, ly: 452, fs: 13 },
+          // Main Center Balloon (3 vertical stripes + basket)
+          { id: 'hb-6', num: 5, d: 'M200,92 Q132,96 132,162 Q132,208 176,245 L188,245 Q168,195 174,148 Q182,110 200,92 Z', lx: 156, ly: 165, fs: 11 },
+          { id: 'hb-7', num: 6, d: 'M200,92 Q182,110 174,148 Q168,195 188,245 L212,245 Q232,195 226,148 Q218,110 200,92 Z', lx: 200, ly: 165, fs: 11 },
+          { id: 'hb-8', num: 7, d: 'M200,92 Q218,110 226,148 Q232,195 212,245 L224,245 Q268,208 268,162 Q268,96 200,92 Z', lx: 244, ly: 165, fs: 11 },
+          { id: 'hb-9', num: 8, d: 'M184,262 L216,262 L212,286 L188,286 Z', lx: 200, ly: 274, fs: 9 },
+          // Left Smaller Balloon
+          { id: 'hb-10', num: 7, d: 'M78,155 Q42,158 42,195 Q42,222 66,244 L78,244 Z', lx: 60, ly: 200, fs: 9 },
+          { id: 'hb-11', num: 6, d: 'M78,155 L78,244 L90,244 Q114,222 114,195 Q114,158 78,155 Z', lx: 96, ly: 200, fs: 9 },
+          { id: 'hb-12', num: 8, d: 'M68,256 L88,256 L86,272 L70,272 Z', lx: 78, ly: 264, fs: 7 },
+          // Right Smaller Balloon
+          { id: 'hb-13', num: 6, d: 'M322,185 Q286,188 286,225 Q286,252 310,274 L322,274 Z', lx: 304, ly: 230, fs: 9 },
+          { id: 'hb-14', num: 5, d: 'M322,185 L322,274 L334,274 Q358,252 358,225 Q358,188 322,185 Z', lx: 340, ly: 230, fs: 9 },
+          { id: 'hb-15', num: 8, d: 'M312,286 L332,286 L330,302 L314,302 Z', lx: 322, ly: 294, fs: 7 }
+        ]
+      },
+      {
+        id: 'butterfly',
+        title: 'Monarch Garden',
+        category: 'Nature',
+        viewBox: '0 0 400 480',
+        palette: {
+          1: { name: 'Garden Sky', hex: '#E0F2FE' },
+          2: { name: 'Wing Orange', hex: '#F97316' },
+          3: { name: 'Wing Gold', hex: '#FACC15' },
+          4: { name: 'Wing Border', hex: '#1E293B' },
+          5: { name: 'Leaf Green', hex: '#22C55E' },
+          6: { name: 'Stem Emerald', hex: '#15803D' },
+          7: { name: 'Blossom Pink', hex: '#EC4899' },
+          8: { name: 'Petal Violet', hex: '#8B5CF6' }
+        },
+        regions: [
+          { id: 'bf-1', num: 1, d: 'M0,0 L400,0 L400,480 L0,480 Z', lx: 45, ly: 45, fs: 14 },
+          // Butterfly Upper Wings Outer Frame
+          { id: 'bf-2', num: 4, d: 'M192,180 Q135,88 52,92 Q25,135 58,200 Q105,245 192,222 Z', lx: 78, ly: 122, fs: 10 },
+          { id: 'bf-3', num: 4, d: 'M208,180 Q265,88 348,92 Q375,135 342,200 Q295,245 208,222 Z', lx: 322, ly: 122, fs: 10 },
+          // Upper Wing Inner Cells
+          { id: 'bf-4', num: 2, d: 'M184,185 Q138,118 76,120 Q62,155 88,195 Q128,222 184,212 Z', lx: 122, ly: 168, fs: 11 },
+          { id: 'bf-5', num: 2, d: 'M216,185 Q262,118 324,120 Q338,155 312,195 Q272,222 216,212 Z', lx: 278, ly: 168, fs: 11 },
+          { id: 'bf-6', num: 3, d: 'M158,182 Q132,145 102,150 Q102,175 128,192 Z', lx: 128, ly: 170, fs: 8 },
+          { id: 'bf-7', num: 3, d: 'M242,182 Q268,145 298,150 Q298,175 272,192 Z', lx: 272, ly: 170, fs: 8 },
+          // Lower Wings Outer Frame
+          { id: 'bf-8', num: 4, d: 'M192,222 Q118,228 82,272 Q82,328 145,328 Q182,315 192,258 Z', lx: 115, ly: 298, fs: 10 },
+          { id: 'bf-9', num: 4, d: 'M208,222 Q282,228 318,272 Q318,328 255,328 Q218,315 208,258 Z', lx: 285, ly: 298, fs: 10 },
+          // Lower Wing Inner Cells
+          { id: 'bf-10', num: 3, d: 'M186,232 Q132,238 106,272 Q108,308 148,306 Q175,295 186,255 Z', lx: 146, ly: 274, fs: 10 },
+          { id: 'bf-11', num: 3, d: 'M214,232 Q268,238 294,272 Q292,308 252,306 Q225,295 214,255 Z', lx: 254, ly: 274, fs: 10 },
+          // Butterfly Body & Head
+          { id: 'bf-12', num: 4, d: 'M192,165 Q200,152 208,165 L208,282 Q200,295 192,282 Z', lx: 200, ly: 225, fs: 8 },
+          // Bottom Garden Flowers & Leaves
+          { id: 'bf-13', num: 6, d: 'M0,415 Q120,390 240,418 Q330,435 400,408 L400,480 L0,480 Z', lx: 200, ly: 455, fs: 12 },
+          { id: 'bf-14', num: 5, d: 'M45,420 Q72,375 110,415 Q82,435 45,420 Z', lx: 78, ly: 410, fs: 8 },
+          { id: 'bf-15', num: 5, d: 'M290,415 Q328,375 355,420 Q318,435 290,415 Z', lx: 322, ly: 410, fs: 8 },
+          { id: 'bf-16', num: 7, d: 'M65,375 A24,24 0 1,1 113,375 A24,24 0 1,1 65,375 Z', lx: 89, ly: 375, fs: 9 },
+          { id: 'bf-17', num: 3, d: 'M80,375 A9,9 0 1,1 98,375 A9,9 0 1,1 80,375 Z', lx: 89, ly: 375, fs: 6 },
+          { id: 'bf-18', num: 8, d: 'M287,375 A24,24 0 1,1 335,375 A24,24 0 1,1 287,375 Z', lx: 311, ly: 375, fs: 9 },
+          { id: 'bf-19', num: 3, d: 'M302,375 A9,9 0 1,1 320,375 A9,9 0 1,1 302,375 Z', lx: 311, ly: 375, fs: 6 }
+        ]
+      },
+      {
+        id: 'pagoda',
+        title: 'Blossom Pagoda',
+        category: 'Travel',
+        viewBox: '0 0 400 480',
+        palette: {
+          1: { name: 'Dawn Sky', hex: '#FCE7F3' },
+          2: { name: 'Mount Slate', hex: '#64748B' },
+          3: { name: 'Snow Peak', hex: '#F8FAFC' },
+          4: { name: 'Pagoda Crimson', hex: '#DC2626' },
+          5: { name: 'Roof Charcoal', hex: '#1E293B' },
+          6: { name: 'Sakura Pink', hex: '#F472B6' },
+          7: { name: 'Pond Blue', hex: '#38BDF8' },
+          8: { name: 'Garden Grass', hex: '#22C55E' }
+        },
+        regions: [
+          // Sky & Sun
+          { id: 'pg-1', num: 1, d: 'M0,0 L400,0 L400,320 L0,320 Z', lx: 55, ly: 55, fs: 14 },
+          { id: 'pg-2', num: 6, d: 'M55,82 A32,32 0 1,1 119,82 A32,32 0 1,1 55,82 Z', lx: 87, ly: 82, fs: 11 },
+          // Distant Mountain & Snow Cap
+          { id: 'pg-3', num: 2, d: 'M0,320 L115,155 L205,320 Z', lx: 92, ly: 265, fs: 11 },
+          { id: 'pg-4', num: 3, d: 'M83,200 L115,155 L147,200 L130,190 L115,202 L100,190 Z', lx: 115, ly: 178, fs: 8 },
+          // Pagoda Tier 1 (Top)
+          { id: 'pg-5', num: 5, d: 'M242,102 L265,78 L288,102 Z', lx: 265, ly: 93, fs: 7 },
+          { id: 'pg-6', num: 4, d: 'M250,102 L280,102 L280,132 L250,132 Z', lx: 265, ly: 117, fs: 8 },
+          // Pagoda Tier 2 (Middle)
+          { id: 'pg-7', num: 5, d: 'M218,152 L265,126 L312,152 Z', lx: 265, ly: 142, fs: 8 },
+          { id: 'pg-8', num: 4, d: 'M234,152 L296,152 L296,192 L234,192 Z', lx: 265, ly: 172, fs: 10 },
+          // Pagoda Tier 3 (Lower)
+          { id: 'pg-9', num: 5, d: 'M198,214 L265,184 L332,214 Z', lx: 265, ly: 202, fs: 9 },
+          { id: 'pg-10', num: 4, d: 'M218,214 L312,214 L312,268 L218,268 Z', lx: 265, ly: 242, fs: 11 },
+          // Pagoda Base & Door
+          { id: 'pg-11', num: 5, d: 'M182,290 L265,260 L348,290 Z', lx: 265, ly: 278, fs: 9 },
+          { id: 'pg-12', num: 4, d: 'M206,290 L324,290 L324,345 L206,345 Z', lx: 232, ly: 318, fs: 10 },
+          { id: 'pg-13', num: 5, d: 'M252,345 L252,308 L278,308 L278,345 Z', lx: 265, ly: 326, fs: 8 },
+          // Cherry Blossom Clusters
+          { id: 'pg-14', num: 6, d: 'M0,195 Q45,168 78,202 Q105,232 68,265 Q28,278 0,255 Z', lx: 46, ly: 222, fs: 10 },
+          { id: 'pg-15', num: 6, d: 'M325,135 Q365,112 400,145 L400,222 Q355,232 328,198 Q312,165 325,135 Z', lx: 365, ly: 175, fs: 10 },
+          // Garden Bank & Pond
+          { id: 'pg-16', num: 8, d: 'M0,335 Q120,318 240,342 Q330,355 400,332 L400,385 L0,385 Z', lx: 95, ly: 356, fs: 11 },
+          { id: 'pg-17', num: 7, d: 'M0,385 L400,385 L400,480 L0,480 Z', lx: 200, ly: 432, fs: 14 },
+          { id: 'pg-18', num: 8, d: 'M295,432 A42,16 0 1,1 379,432 A42,16 0 1,1 295,432 Z', lx: 337, ly: 432, fs: 9 }
+        ]
+      }
+    ];
+
+    // =========================================================================
+    // 2. STATE & PERSISTENCE
+    // =========================================================================
+    const STORAGE_KEY = 'chromatape_v1_progress';
+    let savedProgress = {};
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) savedProgress = JSON.parse(raw);
+    } catch (e) {}
+
+    function persistProgress() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(savedProgress));
+      } catch (e) {}
+    }
+
+    let currentPicIndex = 0;
+    let selectedNum = 1;
+    let soundEnabled = true;
+    let highlightEnabled = true;
+    let autoSwitchEnabled = true;
+    let audioCtx = null;
+
+    // Zoom & Pan state
+    let scale = 1;
+    let minScale = 0.6;
+    let maxScale = 6.0;
+    let tx = 0;
+    let ty = 0;
+
+    // =========================================================================
+    // 3. DOM REFERENCES
+    // =========================================================================
+    const viewport = document.getElementById('canvas-viewport');
+    const zoomStage = document.getElementById('zoom-stage');
+    const artSvg = document.getElementById('art-svg');
+    const paletteBar = document.getElementById('palette-bar');
+    const picTitle = document.getElementById('pic-title');
+    const progressBar = document.getElementById('progress-bar');
+    const progressText = document.getElementById('progress-text');
+    const zoomBadge = document.getElementById('zoom-badge');
+    const toastEl = document.getElementById('toast');
+    const gestureTip = document.getElementById('gesture-tip');
+
+    const galleryModal = document.getElementById('gallery-modal');
+    const galleryGrid = document.getElementById('gallery-grid');
+    const resetModal = document.getElementById('reset-modal');
+    const completeModal = document.getElementById('complete-modal');
+
+    // =========================================================================
+    // 4. AUDIO SYNTHESIS (Web Audio API — zero external sound files)
+    // =========================================================================
+    function playTone(freq, duration = 0.12, type = 'sine', vol = 0.12) {
+      if (!soundEnabled) return;
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {}
+    }
+
+    function playPop() {
+      playTone(520 + Math.random() * 140, 0.11, 'sine', 0.12);
+    }
+
+    function playMismatch() {
+      playTone(190, 0.14, 'triangle', 0.09);
+    }
+
+    function playWin() {
+      [523.25, 659.25, 783.99, 1046.5].forEach((f, idx) => {
+        setTimeout(() => playTone(f, 0.25, 'sine', 0.14), idx * 95);
+      });
+    }
+
+    // =========================================================================
+    // 5. TOAST HELPER
+    // =========================================================================
+    let toastTimer = null;
+    function showToast(msg) {
+      toastEl.textContent = msg;
+      toastEl.style.opacity = '1';
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toastEl.style.opacity = '0';
+      }, 1700);
+    }
+
+    // =========================================================================
+    // 6. ZOOM & PAN ENGINE (Touch Pinch + Drag + Mouse Wheel + Buttons)
+    // =========================================================================
+    function applyTransform(animate = false) {
+      zoomStage.style.transition = animate ? 'transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)' : 'none';
+      zoomStage.style.transform = `translate3d(${tx}px, ${ty}px, 0) scale(${scale})`;
+      const baseFit = getFitScale();
+      const rel = (scale / baseFit).toFixed(1);
+      zoomBadge.textContent = `${rel}x`;
+
+      // Scale number labels slightly inversely at high zoom so they stay crisp & readable
+      const labelScale = Math.max(0.45, Math.min(1.0, baseFit / scale));
+      artSvg.querySelectorAll('.region-label').forEach(lbl => {
+        const baseFs = parseFloat(lbl.dataset.fs || '11');
+        lbl.style.fontSize = `${(baseFs * (0.55 + 0.45 * labelScale)).toFixed(1)}px`;
+      });
+    }
+
+    function getFitScale() {
+      const vw = viewport.clientWidth || 360;
+      const vh = viewport.clientHeight || 480;
+      const pad = 24;
+      return Math.min((vw - pad) / 400, (vh - pad) / 480, 1.4);
+    }
+
+    function fitToScreen(animate = true) {
+      const vw = viewport.clientWidth || 360;
+      const vh = viewport.clientHeight || 480;
+      const fit = getFitScale();
+      minScale = Math.max(0.45, fit * 0.75);
+      maxScale = fit * 6.0;
+      scale = fit;
+      tx = (vw - 400 * scale) / 2;
+      ty = (vh - 480 * scale) / 2;
+      applyTransform(animate);
+    }
+
+    function zoomAtPoint(newScale, cx, cy, animate = false) {
+      const clamped = Math.max(minScale, Math.min(maxScale, newScale));
+      const ratio = clamped / scale;
+      tx = cx - (cx - tx) * ratio;
+      ty = cy - (cy - ty) * ratio;
+      scale = clamped;
+      applyTransform(animate);
+    }
+
+    function zoomCenter(factor) {
+      const vw = viewport.clientWidth;
+      const vh = viewport.clientHeight;
+      zoomAtPoint(scale * factor, vw / 2, vh / 2, true);
+    }
+
+    // Touch handling: 1-finger tap or pan, 2-finger pinch-to-zoom
+    let touchMode = 'none'; // 'pan' | 'pinch'
+    let startX = 0, startY = 0, startTx = 0, startTy = 0;
+    let movedDist = 0;
+    let pinchStartDist = 0, pinchStartScale = 1, pinchMidX = 0, pinchMidY = 0;
+
+    function getTouchDist(t1, t2) {
+      return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+    }
+
+    viewport.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        touchMode = 'pan';
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        startTx = tx;
+        startTy = ty;
+        movedDist = 0;
+      } else if (e.touches.length === 2) {
+        touchMode = 'pinch';
+        const rect = viewport.getBoundingClientRect();
+        pinchStartDist = getTouchDist(e.touches[0], e.touches[1]);
+        pinchStartScale = scale;
+        pinchMidX = ((e.touches[0].clientX + e.touches[1].clientX) / 2) - rect.left;
+        pinchMidY = ((e.touches[0].clientY + e.touches[1].clientY) / 2) - rect.top;
+        startTx = tx;
+        startTy = ty;
+      }
+    }, { passive: true });
+
+    viewport.addEventListener('touchmove', (e) => {
+      if (touchMode === 'pan' && e.touches.length === 1) {
+        const dx = e.touches[0].clientX - startX;
+        const dy = e.touches[0].clientY - startY;
+        movedDist = Math.hypot(dx, dy);
+        if (movedDist > 6) {
+          tx = startTx + dx;
+          ty = startTy + dy;
+          applyTransform(false);
+        }
+      } else if (touchMode === 'pinch' && e.touches.length === 2) {
+        e.preventDefault();
+        const rect = viewport.getBoundingClientRect();
+        const curDist = getTouchDist(e.touches[0], e.touches[1]);
+        const curMidX = ((e.touches[0].clientX + e.touches[1].clientX) / 2) - rect.left;
+        const curMidY = ((e.touches[0].clientY + e.touches[1].clientY) / 2) - rect.top;
+
+        const targetScale = Math.max(minScale, Math.min(maxScale, pinchStartScale * (curDist / pinchStartDist)));
+        const ratio = targetScale / pinchStartScale;
+        scale = targetScale;
+        tx = curMidX - (pinchMidX - startTx) * ratio;
+        ty = curMidY - (pinchMidY - startTy) * ratio;
+        applyTransform(false);
+      }
+    }, { passive: false });
+
+    viewport.addEventListener('touchend', (e) => {
+      if (touchMode === 'pan' && movedDist <= 8 && e.changedTouches.length === 1) {
+        const t = e.changedTouches[0];
+        const el = document.elementFromPoint(t.clientX, t.clientY);
+        if (el && el.classList.contains('region-path')) {
+          handleRegionTap(el.dataset.id);
+        }
+      }
+      if (e.touches.length === 0) {
+        touchMode = 'none';
+      } else if (e.touches.length === 1) {
+        touchMode = 'pan';
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        startTx = tx;
+        startTy = ty;
+        movedDist = 10; // prevent accidental tap after lifting second finger
+      }
+    });
+
+    // Mouse pan & wheel zoom for desktop
+    let isMouseDown = false;
+    let mouseMoved = 0;
+    viewport.addEventListener('mousedown', (e) => {
+      if (e.target.closest('button')) return;
+      isMouseDown = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      startTx = tx;
+      startTy = ty;
+      mouseMoved = 0;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isMouseDown) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      mouseMoved = Math.hypot(dx, dy);
+      if (mouseMoved > 5) {
+        tx = startTx + dx;
+        ty = startTy + dy;
+        applyTransform(false);
+      }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (!isMouseDown) return;
+      isMouseDown = false;
+      if (mouseMoved <= 5) {
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        if (el && el.classList.contains('region-path')) {
+          handleRegionTap(el.dataset.id);
+        }
+      }
+    });
+
+    viewport.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = viewport.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      const factor = e.deltaY < 0 ? 1.14 : 0.88;
+      zoomAtPoint(scale * factor, cx, cy, false);
+    }, { passive: false });
+
+    // =========================================================================
+    // 7. GAMEPLAY & RENDERING
+    // =========================================================================
+    function getPic() {
+      return PICTURES[currentPicIndex];
+    }
+
+    function getFilledMap(picId) {
+      if (!savedProgress[picId]) savedProgress[picId] = {};
+      return savedProgress[picId];
+    }
+
+    function loadPicture(index) {
+      currentPicIndex = index;
+      const pic = getPic();
+      picTitle.textContent = pic.title;
+      artSvg.setAttribute('viewBox', pic.viewBox);
+      artSvg.innerHTML = '';
+
+      const filled = getFilledMap(pic.id);
+
+      // Render regions + labels
+      pic.regions.forEach(reg => {
+        const isDone = !!filled[reg.id];
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', reg.d);
+        path.setAttribute('data-id', reg.id);
+        path.setAttribute('data-num', reg.num);
+        path.setAttribute('stroke', isDone ? pic.palette[reg.num].hex : '#94a3b8');
+        path.setAttribute('stroke-width', isDone ? '0.8' : '1.1');
+        path.setAttribute('stroke-linejoin', 'round');
+        path.setAttribute('fill', isDone ? pic.palette[reg.num].hex : '#ffffff');
+        path.classList.add('region-path');
+        artSvg.appendChild(path);
+
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', reg.lx);
+        text.setAttribute('y', reg.ly);
+        text.dataset.fs = reg.fs;
+        text.dataset.id = reg.id;
+        text.textContent = reg.num;
+        text.classList.add('region-label');
+        if (isDone) text.classList.add('filled');
+        artSvg.appendChild(text);
+      });
+
+      // Pick first incomplete color
+      const firstIncomplete = Object.keys(pic.palette).find(num => !isColorComplete(pic, Number(num)));
+      selectedNum = firstIncomplete ? Number(firstIncomplete) : 1;
+
+      renderPalette();
+      updateHighlights();
+      updateProgress();
+      fitToScreen(false);
+    }
+
+    function isColorComplete(pic, num) {
+      const filled = getFilledMap(pic.id);
+      const matching = pic.regions.filter(r => r.num === num);
+      return matching.length > 0 && matching.every(r => !!filled[r.id]);
+    }
+
+    function renderPalette() {
+      const pic = getPic();
+      const filled = getFilledMap(pic.id);
+      paletteBar.innerHTML = '';
+
+      Object.entries(pic.palette).forEach(([numStr, info]) => {
+        const num = Number(numStr);
+        const totalForNum = pic.regions.filter(r => r.num === num).length;
+        const doneForNum = pic.regions.filter(r => r.num === num && filled[r.id]).length;
+        const complete = totalForNum > 0 && doneForNum === totalForNum;
+        const isActive = num === selectedNum;
+
+        const btn = document.createElement('button');
+        btn.className = `swatch-btn shrink-0 flex flex-col items-center gap-1 px-1.5 py-1 rounded-2xl ${isActive ? 'active' : ''}`;
+        btn.addEventListener('click', () => {
+          selectedNum = num;
+          renderPalette();
+          updateHighlights();
+          playTone(440 + num * 25, 0.06, 'sine', 0.05);
+        });
+
+        const circle = document.createElement('div');
+        circle.className = `w-11 h-11 rounded-full flex items-center justify-center font-extrabold text-sm shadow-md border-2 transition ${
+          isActive ? 'border-slate-900 ring-2 ring-indigo-400 ring-offset-2' : 'border-white'
+        }`;
+        circle.style.backgroundColor = info.hex;
+        circle.style.color = getContrastColor(info.hex);
+        circle.innerHTML = complete ? `<i data-lucide="check" class="w-5 h-5 stroke-[3]"></i>` : num;
+
+        const count = document.createElement('span');
+        count.className = `text-[10px] font-bold ${isActive ? 'text-slate-900' : 'text-slate-400'}`;
+        count.textContent = complete ? 'Done' : `${doneForNum}/${totalForNum}`;
+
+        btn.appendChild(circle);
+        btn.appendChild(count);
+        paletteBar.appendChild(btn);
+      });
+
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function getContrastColor(hex) {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      return lum > 0.62 ? '#0f172a' : '#ffffff';
+    }
+
+    function updateHighlights() {
+      const pic = getPic();
+      const filled = getFilledMap(pic.id);
+      artSvg.querySelectorAll('.region-path').forEach(path => {
+        const id = path.dataset.id;
+        const num = Number(path.dataset.num);
+        if (highlightEnabled && !filled[id] && num === selectedNum) {
+          path.classList.add('highlighted');
+        } else {
+          path.classList.remove('highlighted');
+        }
+      });
+    }
+
+    function updateProgress() {
+      const pic = getPic();
+      const filled = getFilledMap(pic.id);
+      const total = pic.regions.length;
+      const done = pic.regions.filter(r => !!filled[r.id]).length;
+      const pct = total ? Math.round((done / total) * 100) : 0;
+      progressBar.style.width = `${pct}%`;
+      progressText.textContent = `${done}/${total}`;
+    }
+
+    function handleRegionTap(regionId) {
+      const pic = getPic();
+      const filled = getFilledMap(pic.id);
+      const reg = pic.regions.find(r => r.id === regionId);
+      if (!reg || filled[reg.id]) return;
+
+      if (reg.num !== selectedNum) {
+        playMismatch();
+        paletteBar.classList.remove('shake');
+        void paletteBar.offsetWidth;
+        paletteBar.classList.add('shake');
+        showToast(`Select #${reg.num} (${pic.palette[reg.num].name}) to color this area`);
+        return;
+      }
+
+      // Fill region!
+      filled[reg.id] = true;
+      persistProgress();
+      playPop();
+
+      const path = artSvg.querySelector(`.region-path[data-id="${reg.id}"]`);
+      const label = artSvg.querySelector(`.region-label[data-id="${reg.id}"]`);
+      if (path) {
+        path.classList.remove('highlighted');
+        path.setAttribute('fill', pic.palette[reg.num].hex);
+        path.setAttribute('stroke', pic.palette[reg.num].hex);
+        path.setAttribute('stroke-width', '0.8');
+      }
+      if (label) label.classList.add('filled');
+
+      // Check if selected color is now finished -> auto-advance
+      if (autoSwitchEnabled && isColorComplete(pic, selectedNum)) {
+        const nextNum = Object.keys(pic.palette).find(n => !isColorComplete(pic, Number(n)));
+        if (nextNum) {
+          selectedNum = Number(nextNum);
+          showToast(`Color #${reg.num} complete! Switched to #${selectedNum}`);
+        }
+      }
+
+      renderPalette();
+      updateHighlights();
+      updateProgress();
+
+      // Check full picture completion
+      const allDone = pic.regions.every(r => !!filled[r.id]);
+      if (allDone) {
+        playWin();
+        if (window.confetti) {
+          confetti({ particleCount: 90, spread: 70, origin: { y: 0.6 } });
+        }
+        document.getElementById('complete-subtitle').textContent = `You completed "${pic.title}"!`;
+        setTimeout(() => {
+          completeModal.classList.remove('hidden');
+          completeModal.classList.add('flex');
+        }, 400);
+      }
+    }
+
+    // =========================================================================
+    // 8. HINT (Pan & Zoom straight to next uncolored region of selected color)
+    // =========================================================================
+    function findNextHint() {
+      const pic = getPic();
+      const filled = getFilledMap(pic.id);
+      let target = pic.regions.find(r => !filled[r.id] && r.num === selectedNum);
+      if (!target) {
+        target = pic.regions.find(r => !filled[r.id]);
+        if (target) {
+          selectedNum = target.num;
+          renderPalette();
+          updateHighlights();
+        }
+      }
+      if (!target) {
+        showToast('Picture is already complete!');
+        return;
+      }
+
+      const vw = viewport.clientWidth;
+      const vh = viewport.clientHeight;
+      const targetScale = Math.min(maxScale, Math.max(scale, getFitScale() * 2.4));
+      scale = targetScale;
+      tx = vw / 2 - target.lx * scale;
+      ty = vh / 2 - target.ly * scale;
+      applyTransform(true);
+      playTone(660, 0.12, 'sine', 0.08);
+    }
+
+    // =========================================================================
+    // 9. GALLERY & EXPORT
+    // =========================================================================
+    function openGallery() {
+      galleryGrid.innerHTML = '';
+      PICTURES.forEach((pic, idx) => {
+        const filled = getFilledMap(pic.id);
+        const done = pic.regions.filter(r => !!filled[r.id]).length;
+        const total = pic.regions.length;
+        const pct = Math.round((done / total) * 100);
+        const isCurrent = idx === currentPicIndex;
+
+        const card = document.createElement('button');
+        card.className = `text-left rounded-2xl border p-2.5 transition active:scale-95 ${
+          isCurrent ? 'border-indigo-500 bg-indigo-50/40 ring-2 ring-indigo-200' : 'border-slate-200 bg-white hover:border-slate-300'
+        }`;
+        card.addEventListener('click', () => {
+          closeGallery();
+          hideStartScreen();
+          loadPicture(idx);
+        });
+
+        // Mini SVG preview
+        const previewSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        previewSvg.setAttribute('viewBox', pic.viewBox);
+        previewSvg.setAttribute('class', 'w-full h-32 rounded-xl bg-slate-50 border border-slate-100 mb-2');
+        pic.regions.forEach(r => {
+          const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          p.setAttribute('d', r.d);
+          p.setAttribute('fill', filled[r.id] ? pic.palette[r.num].hex : '#ffffff');
+          p.setAttribute('stroke', filled[r.id] ? pic.palette[r.num].hex : '#cbd5e1');
+          p.setAttribute('stroke-width', '1.2');
+          previewSvg.appendChild(p);
+        });
+
+        const title = document.createElement('div');
+        title.className = 'text-xs font-bold text-slate-900 truncate';
+        title.textContent = pic.title;
+
+        const meta = document.createElement('div');
+        meta.className = 'flex items-center justify-between mt-1';
+        meta.innerHTML = `<span class="text-[10px] font-medium text-slate-500">${pic.category}</span><span class="text-[10px] font-bold ${pct === 100 ? 'text-emerald-600' : 'text-indigo-600'}">${pct}%</span>`;
+
+        card.appendChild(previewSvg);
+        card.appendChild(title);
+        card.appendChild(meta);
+        galleryGrid.appendChild(card);
+      });
+
+      galleryModal.classList.remove('hidden');
+      galleryModal.classList.add('flex');
+    }
+
+    function closeGallery() {
+      galleryModal.classList.add('hidden');
+      galleryModal.classList.remove('flex');
+    }
+
+    function downloadArtworkPng() {
+      const pic = getPic();
+      const clone = artSvg.cloneNode(true);
+      clone.querySelectorAll('.region-label').forEach(el => el.remove());
+      const svgData = new XMLSerializer().serializeToString(clone);
+      const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        c.width = 800;
+        c.height = 960;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        const link = document.createElement('a');
+        link.download = `${pic.id}-colored.png`;
+        link.href = c.toDataURL('image/png');
+        link.click();
+      };
+      img.src = url;
+    }
+
+    // =========================================================================
+    // 10. EVENT LISTENERS & INIT
+    // =========================================================================
+    document.getElementById('btn-zoom-in').addEventListener('click', () => zoomCenter(1.35));
+    document.getElementById('btn-zoom-out').addEventListener('click', () => zoomCenter(0.74));
+    document.getElementById('btn-zoom-fit').addEventListener('click', () => fitToScreen(true));
+    document.getElementById('btn-hint').addEventListener('click', findNextHint);
+
+    const menuModal = document.getElementById('menu-modal');
+    const toggleSound = document.getElementById('toggle-sound');
+    const toggleHighlight = document.getElementById('toggle-highlight');
+    const toggleAutoswitch = document.getElementById('toggle-autoswitch');
+
+    function syncSoundUI() {
+      const icon = document.getElementById('icon-sound');
+      icon.setAttribute('data-lucide', soundEnabled ? 'volume-2' : 'volume-x');
+      toggleSound.checked = soundEnabled;
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function openMenu() {
+      const completedPics = PICTURES.filter(p => {
+        const filled = getFilledMap(p.id);
+        return p.regions.every(r => !!filled[r.id]);
+      }).length;
+      document.getElementById('menu-stats').textContent = `${completedPics}/${PICTURES.length} pictures finished`;
+      menuModal.classList.remove('hidden');
+      menuModal.classList.add('flex');
+    }
+
+    function closeMenu() {
+      menuModal.classList.add('hidden');
+      menuModal.classList.remove('flex');
+    }
+
+    document.getElementById('btn-menu').addEventListener('click', openMenu);
+    document.getElementById('btn-close-menu').addEventListener('click', closeMenu);
+    menuModal.addEventListener('click', (e) => { if (e.target === menuModal) closeMenu(); });
+
+    const startScreen = document.getElementById('start-screen');
+
+    function showStartScreen() {
+      const completedPics = PICTURES.filter(p => {
+        const filled = getFilledMap(p.id);
+        return p.regions.every(r => !!filled[r.id]);
+      }).length;
+      const totalColored = PICTURES.reduce((acc, p) => {
+        const filled = getFilledMap(p.id);
+        return acc + p.regions.filter(r => !!filled[r.id]).length;
+      }, 0);
+      const summaryEl = document.getElementById('start-progress-summary');
+      summaryEl.textContent = totalColored > 0
+        ? `${completedPics}/${PICTURES.length} pictures completed • ${totalColored} regions colored`
+        : `${PICTURES.length} crisp vector pictures ready to color`;
+      document.getElementById('start-continue-label').textContent =
+        totalColored > 0 ? `Continue: ${getPic().title}` : `Quick Play: ${getPic().title}`;
+      startScreen.classList.remove('hidden');
+      startScreen.classList.add('flex');
+    }
+
+    function hideStartScreen() {
+      startScreen.classList.add('hidden');
+      startScreen.classList.remove('flex');
+      setTimeout(() => fitToScreen(false), 30);
+    }
+
+    document.getElementById('btn-start-gallery').addEventListener('click', () => {
+      openGallery();
+    });
+    document.getElementById('btn-start-continue').addEventListener('click', () => {
+      hideStartScreen();
+    });
+    document.getElementById('menu-btn-home').addEventListener('click', () => {
+      closeMenu();
+      showStartScreen();
+    });
+
+    document.getElementById('menu-btn-gallery').addEventListener('click', () => {
+      closeMenu();
+      openGallery();
+    });
+    document.getElementById('menu-btn-hint').addEventListener('click', () => {
+      closeMenu();
+      findNextHint();
+    });
+    document.getElementById('menu-btn-save').addEventListener('click', () => {
+      closeMenu();
+      downloadArtworkPng();
+    });
+    document.getElementById('menu-btn-reset').addEventListener('click', () => {
+      closeMenu();
+      document.getElementById('reset-pic-name').textContent = getPic().title;
+      resetModal.classList.remove('hidden');
+      resetModal.classList.add('flex');
+    });
+
+    toggleSound.addEventListener('change', (e) => {
+      soundEnabled = e.target.checked;
+      syncSoundUI();
+    });
+    toggleHighlight.addEventListener('change', (e) => {
+      highlightEnabled = e.target.checked;
+      updateHighlights();
+    });
+    toggleAutoswitch.addEventListener('change', (e) => {
+      autoSwitchEnabled = e.target.checked;
+    });
+
+    document.getElementById('btn-sound').addEventListener('click', () => {
+      soundEnabled = !soundEnabled;
+      syncSoundUI();
+      showToast(soundEnabled ? 'Sound on' : 'Sound muted');
+    });
+
+    document.getElementById('btn-gallery').addEventListener('click', openGallery);
+    document.getElementById('btn-close-gallery').addEventListener('click', closeGallery);
+    galleryModal.addEventListener('click', (e) => { if (e.target === galleryModal) closeGallery(); });
+
+    document.getElementById('btn-reset').addEventListener('click', () => {
+      document.getElementById('reset-pic-name').textContent = getPic().title;
+      resetModal.classList.remove('hidden');
+      resetModal.classList.add('flex');
+    });
+    document.getElementById('btn-cancel-reset').addEventListener('click', () => {
+      resetModal.classList.add('hidden');
+      resetModal.classList.remove('flex');
+    });
+    document.getElementById('btn-confirm-reset').addEventListener('click', () => {
+      savedProgress[getPic().id] = {};
+      persistProgress();
+      resetModal.classList.add('hidden');
+      resetModal.classList.remove('flex');
+      loadPicture(currentPicIndex);
+      showToast('Picture reset');
+    });
+
+    document.getElementById('btn-download-png').addEventListener('click', downloadArtworkPng);
+    document.getElementById('btn-next-picture').addEventListener('click', () => {
+      completeModal.classList.add('hidden');
+      completeModal.classList.remove('flex');
+      openGallery();
+    });
+
+    window.addEventListener('resize', () => fitToScreen(false));
+
+    window.onload = () => {
+      if (window.lucide) lucide.createIcons();
+      loadPicture(0);
+      showStartScreen();
+      setTimeout(() => {
+        gestureTip.style.opacity = '0';
+      }, 4500);
+    };
+  </script>
+</body>
+</html>
